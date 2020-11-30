@@ -69,11 +69,11 @@ fi
 
 
 workdir="/tmp/${svnamespace}-${gcname}"
-mkdir -p $workdir
-sshkey=$workdir/gc-sshkey # path for gc private key
-gckubeconfig=$workdir/kubeconfig # path for gc kubeconfig
+mkdir -p ${workdir}
+sshkey=${workdir}/gc-sshkey # path for gc private key
+gckubeconfig=${workdir}/kubeconfig # path for gc kubeconfig
 timestamp=$(date +%F_%R)
-dir=`dirname $destination`
+dir=$(dirname $destination)
 
 pre_check() {
   ssh -q -i ${sshkey} -o StrictHostKeyChecking=no vmware-system-user@${node_ip} "sudo [ ! -d ${dir} ] && echo 'Creating ${dir}' && sudo mkdir -p ${dir} || echo 'Directory exists'"
@@ -137,7 +137,7 @@ for ip in ${iplist}; do
   if [[ -n "${service}" ]]; then
     echo "Restarting ${service} ... this can take a few seconds"
     restart_service
-    [ $? = 0 ] && echo "${service} restarted" || echo "Failed to restart ${service}"
+    [[ $? = 0 ]] && echo "${service} restarted" || echo "Failed to restart ${service}"
   fi
 
 done
