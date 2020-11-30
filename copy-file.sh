@@ -56,12 +56,12 @@ if [[ "$1" == '--' ]]; then shift; fi
 
 
 if [[ -n "${capath}" ]]; then
-  if [[ -n "${file}" -o -n "${destination}" -o -n "${gcname}" -o -n "${svnamespace}" ]]; then
+  if [[ -n "${file}" || -n "${destination}" || -n "${gcname}" || -n "${svnamespace}" ]]; then
     echo "-c can only be used with -r option."
     exit
   fi
 else
-  if [[ -z "${file}" -o -z "${destination}" -o -z "${gcname}" -o -z "${svnamespace}" ]]; then
+  if [[ -z "${file}" || -z "${destination}" || -z "${gcname}" || -z "${svnamespace}" ]]; then
     echo "If copying a file, destination, guest cluster name and supervisor namespace must not be blank"
     exit
   fi
@@ -73,17 +73,12 @@ mkdir -p $workdir
 sshkey=$workdir/gc-sshkey # path for gc private key
 gckubeconfig=$workdir/kubeconfig # path for gc kubeconfig
 timestamp=$(date +%F_%R)
+dir=`dirname $destination`
 
 pre_check() {
-  if [[ ! -d $(dirname ${destination}) ]]; then
-    echo "creating $(dirname ${destination})"; ssh -q -i ${sshkey} -o StrictHostKeyChecking=no vmware-system-user@${node_ip} sudo mkdir -p $(dirname ${destination})
-  fi 
+  ssh -q -i ${sshkey} -o StrictHostKeyChecking=no vmware-system-user@${node_ip} "sudo [ ! -d ${dir} ] && echo 'Creating ${dir}' && sudo mkdir -p ${dir} || echo 'Directory exists'"
 
-  if [[ -e ${destination} ]]; then
-    echo "creating backup"; ssh -q -i ${sshkey} -o StrictHostKeyChecking=no vmware-system-user@${node_ip} sudo cp ${destination} ${destination}.bk-$(date +%F_%R)
-  else
-    echo "no pre-existing file at ${destination}"
-  fi
+  ssh -q -i ${sshkey} -o StrictHostKeyChecking=no vmware-system-user@${node_ip} "sudo [ -f $destination ] && echo 'Creating backup' && sudo cp ${destination} ${destination}.bk-$(date +%F_%R) || echo 'No pre-existing file at ${destination}'"
 }
 
 
@@ -92,9 +87,9 @@ copyfile() {
   filepath=$2
   destination=$3
 
-  pre_check()
-  [[ $? == 0 ]] scp -q -i ${sshkey} -o StrictHostKeyChecking=no ${filepath} vmware-system-user@${node_ip}:/tmp/copied_file
-  [[ $? == 0 ]] ssh -q -i ${sshkey} -o StrictHostKeyChecking=no vmware-system-user@${node_ip} sudo mv /tmp/copied_file ${destination}
+  pre_check
+  [[ $? == 0 ]] && scp -q -i ${sshkey} -o StrictHostKeyChecking=no ${filepath} vmware-system-user@${node_ip}:/tmp/copied_file
+  [[ $? == 0 ]] && ssh -q -i ${sshkey} -o StrictHostKeyChecking=no vmware-system-user@${node_ip} "sudo mv /tmp/copied_file ${destination} && sudo chown root:root ${destination} || echo 'Failed to move file'"
 }
 
 
@@ -110,8 +105,7 @@ installCA() {
 
 
 restart_service() {
-  ssh -q -i ${sshkey} -o StrictHostKeyChecking=no vmware-system-user@${node_ip} sudo systemctl daemon-reload ${service}
-  ssh -q -i ${sshkey} -o StrictHostKeyChecking=no vmware-system-user@${node_ip} sudo systemctl restart ${service}
+  ssh -q -i ${sshkey} -o StrictHostKeyChecking=no vmware-system-user@${node_ip} "sudo systemctl daemon-reload && sudo systemctl restart ${service} || echo 'Failed to restart ${service}'"
 }
 
 
@@ -128,23 +122,22 @@ kubectl get secret -n ${svnamespace} ${gcname}"-kubeconfig" -o jsonpath='{.data.
 # get IPs of each guest cluster nodes
 iplist=$(KUBECONFIG=${gckubeconfig} kubectl get nodes -o jsonpath='{.items[*].status.addresses[?(@.type=="InternalIP")].address}')
 
-for ip in ${ip}list; do
+for ip in ${iplist}; do
 
   if [[ -n "${file}" ]]; then
-    echo "copying $file to node ${ip}:${destination} (needs about 10 seconds)... "
-    copyfile ${ip} $file ${destination} && echo "Successfully copied $file to node ${ip}:${destination}" || echo "Failed to copy $file to node ${ip}:${destination}"
+    echo "Copying ${file} to node ${ip}:${destination}"
+    copyfile ${ip} ${file} ${destination} && echo "Successfully copied $file to node ${ip}:${destination}" || echo "Failed to copy $file to node ${ip}:${destination}"
   fi
 
   if [[ -n "${capath}" ]]; then
-    echo "installing root ca into node ${ip} (needs about 10 seconds)... "
+    echo "Installing root ca into node ${ip}"
     installCA ${ip} ${capath} && echo "Successfully installed root ca into node ${ip}" || echo "Failed to install root ca into node ${ip}"
   fi
 
   if [[ -n "${service}" ]]; then
-    echo "restarting ${service}"
-    restart_service && echo "${service} restarted" || echo "Failed to restart ${service}"
+    echo "Restarting ${service} ... this can take a few seconds"
+    restart_service
+    [ $? = 0 ] && echo "${service} restarted" || echo "Failed to restart ${service}"
   fi
 
 done
-
-# End
