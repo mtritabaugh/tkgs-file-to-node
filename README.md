@@ -8,16 +8,21 @@
 - Must be run from a Supervisor Control Plane host
 - Obtain the password via vCenter /usr/lib/vmware-wcp/decryptK8Pwd.py
 
-## Copy File
+## Copy File (Use -r to restart systemd service)
 
 Will create the directory on destination if it doesn't exist. Will backup existing file.
 - copy-file.sh -l {PATH_TO_LOCAL_FILE} -d {FULL_PATH_ON_DESTINATION} -g {GUEST_CLUSTER_NAME}
 -s {SUPERVISOR_NAMESPACE}
+- copy-file.sh -l {PATH_TO_LOCAL_FILE} -d {FULL_PATH_ON_DESTINATION} -g {GUEST_CLUSTER_NAME}
+-s {SUPERVISOR_NAMESPACE} -r {SERVICE}
 
 
-## Install Certificate
+## Install Certificate (Use -r to restart systemd service)
 
-- copy-file.sh -c {PATH_TO_LOCAL_CERT}
+- copy-file.sh -c {PATH_TO_LOCAL_CERT} -g {GUEST_CLUSTER_NAME} -s {SUPERVISOR_NAMESPACE}
+- copy-file.sh -c {PATH_TO_LOCAL_CERT} -g {GUEST_CLUSTER_NAME} -s {SUPERVISOR_NAMESPACE} -r {SERVICE}
 
-## Restart Service
-The -r {SERVICE} option will reload and restart a systemd service
+## Reload and Restart Service (No file copy or cert install)
+
+- copy-file.sh -g {GUEST_CLUSTER_NAME} -s {SUPERVISOR_NAMESPACE} -r {SERVICE}
+

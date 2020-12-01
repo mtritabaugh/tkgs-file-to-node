@@ -3,7 +3,7 @@
 print_help() {
   echo " "
   echo "Help:"
-  echo "Only one of either -c or -l can be supplied"
+  echo "Only one of either -c or -l can be supplied. File Copy or Cert Install"
   echo "  -l FULL_PATH_TO_LOCALFILE"
   echo "  -d FULL_DESTINATION_PATH"
   echo "  -g GUEST_CLUSTER_NAME"
@@ -54,17 +54,22 @@ while [[ "$1" =~ ^- && ! "$1" == "--" ]]; do
 done
 if [[ "$1" == '--' ]]; then shift; fi
 
-
-if [[ -n "${capath}" ]]; then
-  if [[ -n "${file}" || -n "${destination}" || -n "${gcname}" || -n "${svnamespace}" ]]; then
-    echo "-c can only be used with -r option."
+if [[ -z "${gcname}" || -z "${svnamespace}" ]]; then
+  echo "-g and -s are required"
+  exit
+elif [[ -n "${capath}" ]]; then
+  if [[ -n "${file}" || -n "${destination}" ]]; then
+    echo "-c cannot be used with -l or -d."
     exit
   fi
+elif [[ -n "${service}" && -z "${file}" && -z "${destination}" ]]; then
+  echo "Just a service restart"  
+elif [[ -z "${file}" || -z "${destination}" ]]; then
+  echo "If copying a file, -l and -d must not be blank"
+  exit
 else
-  if [[ -z "${file}" || -z "${destination}" || -z "${gcname}" || -z "${svnamespace}" ]]; then
-    echo "If copying a file, destination, guest cluster name and supervisor namespace must not be blank"
-    exit
-  fi
+  echo "Setting dir name"
+  dir=$(dirname $destination)
 fi
 
 
@@ -73,12 +78,12 @@ mkdir -p ${workdir}
 sshkey=${workdir}/gc-sshkey # path for gc private key
 gckubeconfig=${workdir}/kubeconfig # path for gc kubeconfig
 timestamp=$(date +%F_%R)
-dir=$(dirname $destination)
+#dir=$(dirname $destination)
 
 pre_check() {
   ssh -q -i ${sshkey} -o StrictHostKeyChecking=no vmware-system-user@${node_ip} "sudo [ ! -d ${dir} ] && echo 'Creating ${dir}' && sudo mkdir -p ${dir} || echo 'Directory exists'"
 
-  ssh -q -i ${sshkey} -o StrictHostKeyChecking=no vmware-system-user@${node_ip} "sudo [ -f $destination ] && echo 'Creating backup' && sudo cp ${destination} ${destination}.bk-$(date +%F_%R) || echo 'No pre-existing file at ${destination}'"
+  ssh -q -i ${sshkey} -o StrictHostKeyChecking=no vmware-system-user@${node_ip} "sudo [ -f ${destination} ] && echo 'Creating backup' && sudo cp ${destination} ${destination}.bk-$(date +%F_%R) || echo 'No pre-existing file at ${destination}'"
 }
 
 
@@ -105,6 +110,7 @@ installCA() {
 
 
 restart_service() {
+  node_ip=$1
   ssh -q -i ${sshkey} -o StrictHostKeyChecking=no vmware-system-user@${node_ip} "sudo systemctl daemon-reload && sudo systemctl restart ${service} || echo 'Failed to restart ${service}'"
 }
 
@@ -135,8 +141,8 @@ for ip in ${iplist}; do
   fi
 
   if [[ -n "${service}" ]]; then
-    echo "Restarting ${service} ... this can take a few seconds"
-    restart_service
+    echo "Restarting ${service} on ${ip} ... this can take a few seconds"
+    restart_service ${ip}
     [[ $? = 0 ]] && echo "${service} restarted" || echo "Failed to restart ${service}"
   fi
 
